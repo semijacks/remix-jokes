@@ -2,6 +2,7 @@ import type { ActionFunction, LinksFunction } from 'remix';
 import { useActionData, json, Link, useSearchParams } from 'remix';
 
 import { db } from '~/utils/db.server';
+import { createUserSession, login, register } from '~/utils/session.server';
 import stylesUrl from '~/styles/login.css';
 
 export const links: LinksFunction = () => {
@@ -18,6 +19,15 @@ function validatePassword(password: unknown) {
   if (typeof password !== 'string' || password.length < 6) {
     return `Passwords must be at least 6 characters long`;
   }
+}
+
+function validateUrl(url: any) {
+  console.log(url);
+  let urls = ['/jokes', '/', 'https://remix.run'];
+  if (urls.includes(url)) {
+    return url;
+  }
+  return '/jokes';
 }
 
 type ActionData = {
@@ -40,7 +50,7 @@ export const action: ActionFunction = async ({ request }) => {
   const loginType = form.get('loginType');
   const username = form.get('username');
   const password = form.get('password');
-  const redirectTo = form.get('redirectTo') || '/jokes';
+  const redirectTo = validateUrl(form.get('redirectTo') || '/jokes');
   if (
     typeof loginType !== 'string' ||
     typeof username !== 'string' ||
@@ -63,8 +73,17 @@ export const action: ActionFunction = async ({ request }) => {
   switch (loginType) {
     case 'login': {
       // login to get the user
+      const user = await login({ username, password });
       // if there's no user, return the fields and a formError
+      if (!user) {
+        return badRequest({
+          fields,
+          formError: `Username/Password combination is incorrect`,
+        });
+      }
       // if there is a user, create their session and redirect to /jokes
+      return createUserSession(user.id, redirectTo);
+
       return badRequest({
         fields,
         formError: 'Not implemented',
@@ -81,11 +100,15 @@ export const action: ActionFunction = async ({ request }) => {
         });
       }
       // create the user
+      const user = await register({ username, password });
+      if (!user) {
+        return badRequest({
+          fields,
+          formError: `Something went wrong trying to create a new user.`,
+        });
+      }
       // create their session and redirect to /jokes
-      return badRequest({
-        fields,
-        formError: 'Not implemented',
-      });
+      return createUserSession(user.id, redirectTo);
     }
     default: {
       return badRequest({
